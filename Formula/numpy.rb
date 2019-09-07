@@ -6,6 +6,8 @@ class Numpy < Formula
   license "BSD-3-Clause"
   head "https://github.com/numpy/numpy.git"
 
+  MKLROOT = "/opt/intel/mkl".freeze
+
   bottle do
     sha256 cellar: :any, arm64_big_sur: "c2904e46fb22bc5d067c1c26deb07747f488721f734dce29d5cd049ce9684701"
     sha256 cellar: :any, big_sur:       "ae10cdd3dc05c9c76feef50b2ee8365b49b2c1b6efbe3e134d4390c4e82ed602"
@@ -15,22 +17,24 @@ class Numpy < Formula
 
   depends_on "cython" => :build
   depends_on "gcc" => :build # for gfortran
-  depends_on "openblas"
   depends_on "python@3.9"
 
   fails_with gcc: "5"
 
   def install
-    openblas = Formula["openblas"].opt_prefix
-    ENV["ATLAS"] = "None" # avoid linking against Accelerate.framework
-    ENV["BLAS"] = ENV["LAPACK"] = "#{openblas}/lib/#{shared_library("libopenblas")}"
+    # See also:
+    # https://software.intel.com/en-us/articles/numpyscipy-with-intel-mkl
+    ENV["MACOSX_DEPLOYMENT_TARGET"] = "#{MacOS.version}"
+    ENV.append_to_cflags "-march=native"
+    ENV.append_to_cflags "-mtune=native"
+    ENV.append_to_cflags "-Ofast"
+    ENV.append "FCFLAGS", "-Ofast"
+    ENV.append "FCFLAGS", "-fexternal-blas"
 
-    config = <<~EOS
-      [openblas]
-      libraries = openblas
-      library_dirs = #{openblas}/lib
-      include_dirs = #{openblas}/include
-    EOS
+    ENV["ATLAS"] = "None" # avoid linking against Accelerate.framework
+    ENV["BLAS"] = "#{MKLROOT}/lib/libmkl_blas95_ilp64.a"
+    ENV["LAPACK"] = "#{MKLROOT}/lib/libmkl_lapack95_ilp64.a"
+    config = mkl_config()
 
     Pathname("site.cfg").write config
 
@@ -40,6 +44,38 @@ class Numpy < Formula
     system Formula["python@3.9"].opt_bin/"python3", "setup.py", "build",
         "--fcompiler=gfortran", "--parallel=#{ENV.make_jobs}"
     system Formula["python@3.9"].opt_bin/"python3", *Language::Python.setup_install_args(prefix)
+  end
+
+  def mkl_config
+    return <<~EOS
+      [ALL]
+      extra_compile_args = -march=native -Ofast
+
+      [mkl]
+      library_dirs = #{MKLROOT}/lib
+      include_dirs = #{MKLROOT}/include
+      rpath = #{MKLROOT}/lib
+      mkl_libs = mkl_rt
+      lapack_libs =
+    EOS
+  end
+
+  def openblas_config
+    return <<~EOS
+      [openblas]
+      libraries = openblas
+      library_dirs = #{openblas}/lib
+      include_dirs = #{openblas}/include  end
+    EOS
+  end
+
+  def caveats
+    <<~EOS
+      You must
+      export DYLD_LIBRARY_PATH=#{MKLROOT}/lib
+      before loading numpy in order to avoid errors like
+      "Library not loaded: @rpath/libmkl_rt.dylib".
+    EOS
   end
 
   test do
