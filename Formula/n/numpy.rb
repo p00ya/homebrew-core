@@ -3,7 +3,9 @@ class Numpy < Formula
   homepage "https://www.numpy.org/"
   license "BSD-3-Clause"
   head "https://github.com/numpy/numpy.git", branch: "main"
-
+  
+  MKLROOT = "/opt/intel/mkl".freeze
+  
   stable do
     url "https://files.pythonhosted.org/packages/65/6e/09db70a523a96d25e115e71cc56a6f9031e7b8cd166c1ac8438307c14058/numpy-1.26.4.tar.gz"
     sha256 "2a02aba9ed12e4ac4eb3ea9421c420301a0c6460d9830d74a9df87efa4912010"
@@ -41,17 +43,59 @@ class Numpy < Formula
   end
 
   def install
+    # See also:
+    # https://software.intel.com/en-us/articles/numpyscipy-with-intel-mkl
+    ENV["MACOSX_DEPLOYMENT_TARGET"] = "#{MacOS.version}"
+    ENV.append_to_cflags "-march=native"
+    ENV.append_to_cflags "-mtune=native"
+    ENV.append_to_cflags "-Ofast"
+    ENV.append "FCFLAGS", "-Ofast"
+    ENV.append "FCFLAGS", "-fexternal-blas"
+
+    ENV["ATLAS"] = "None" # avoid linking against Accelerate.framework
+    ENV["BLAS"] = "#{MKLROOT}/lib/libmkl_blas95_ilp64.a"
+    ENV["LAPACK"] = "#{MKLROOT}/lib/libmkl_lapack95_ilp64.a"
+    config = mkl_config()
+
+    Pathname("site.cfg").write config
+
     pythons.each do |python|
       python3 = python.opt_libexec/"bin/python"
-      system python3, "-m", "pip", "install", "-Csetup-args=-Dblas=openblas",
-                                              "-Csetup-args=-Dlapack=openblas",
-                                              *std_pip_args(build_isolation: true), "."
+      system python3, "-m", "pip", "install",
+          *std_pip_args(build_isolation: true), "."
     end
+  end
+
+  def mkl_config
+    return <<~EOS
+      [ALL]
+      extra_compile_args = -march=native -Ofast
+
+      [mkl]
+      library_dirs = #{MKLROOT}/lib
+      include_dirs = #{MKLROOT}/include
+      rpath = #{MKLROOT}/lib
+      mkl_libs = mkl_rt
+      lapack_libs =
+    EOS
+  end
+
+  def openblas_config
+    return <<~EOS
+      [openblas]
+      libraries = openblas
+      library_dirs = #{openblas}/lib
+      include_dirs = #{openblas}/include  end
+    EOS
   end
 
   def caveats
     <<~EOS
       To run `f2py`, you may need to `brew install #{pythons.last}`
+      
+      You must export DYLD_LIBRARY_PATH=#{MKLROOT}/lib
+      before loading numpy in order to avoid errors like
+      "Library not loaded: @rpath/libmkl_rt.dylib".
     EOS
   end
 
