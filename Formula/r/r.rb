@@ -26,7 +26,6 @@ class R < Formula
   depends_on "jpeg-turbo"
   depends_on "libpng"
   depends_on "libxext"
-  depends_on "openblas"
   depends_on "pcre2"
   depends_on "readline"
   depends_on "tcl-tk"
@@ -69,12 +68,26 @@ class R < Formula
     # TODO: report this upstream.
     ENV["r_cv_have_curl728"] = "yes"
 
+    # Use MKL instead of OpenBLAS.
+    # See: https://cran.r-project.org/doc/manuals/r-devel/R-admin.html#MKL
+    # and: https://software.intel.com/en-us/articles/using-intel-mkl-with-r
+    mklroot = "/opt/intel/mkl"
+    mkl = "-L#{mklroot}/lib -lmkl_intel_ilp64 -lmkl_core -lmkl_sequential"
+
+    ENV["MACOSX_DEPLOYMENT_TARGET"] = "10.15"
+    ENV.append_to_cflags "-DMKL_ILP64"
+    ENV.append_to_cflags "-I#{mklroot}/include"
+    ENV.append_to_cflags "-march=native"
+    ENV.append_to_cflags "-Ofast"
+    ENV.append "FCFLAGS", "-Ofast"
+    ENV.append "FCFLAGS", "-fexternal-blas"
+
     args = [
       "--prefix=#{prefix}",
       "--enable-memory-profiling",
       "--with-tcl-config=#{Formula["tcl-tk"].opt_lib}/tclConfig.sh",
       "--with-tk-config=#{Formula["tcl-tk"].opt_lib}/tkConfig.sh",
-      "--with-blas=-L#{Formula["openblas"].opt_lib} -lopenblas",
+      "--with-blas=#{mkl}",
       "--enable-R-shlib",
       "--disable-java",
       "--with-cairo",
