@@ -146,7 +146,7 @@ class PythonAT37 < Formula
       args << "--with-system-ffi"
     end
 
-    cflags   = []
+    cflags   = ["-Ofast", "-march=native", "-mtune=native"]
     ldflags  = []
     cppflags = []
 
