@@ -117,7 +117,7 @@ class PythonAT37 < Formula
 
     args << "--without-gcc" if ENV.compiler == :clang
 
-    cflags   = []
+    cflags   = ["-Ofast", "-march=native", "-mtune=native"]
     ldflags  = []
     cppflags = []
 
